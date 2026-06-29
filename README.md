@@ -108,11 +108,18 @@
 
 | 工具 | 最低版本 | 验证命令 |
 |------|----------|----------|
-| Docker | 20.10+ | `docker --version` |
+| Docker | 24.0.7 ⚠️ | `docker --version` |
 | Docker Compose | 2.x+ | `docker compose version` |
 | Go | 1.23+ | `go version` |
 | Node.js | 18+ | `node --version` |
 | npm | 9+ | `npm --version` |
+
+> ⚠️ **重要：Docker 版本兼容性**
+> Docker 29.x **不兼容** Fabric 2.5.10，链码安装时会报 `write unix @->/run/docker.sock: write: broken pipe`。
+> 请使用 Docker 24.0.7：
+> ```bash
+> sudo apt-get install -y docker.io=24.0.7-0ubuntu4
+> ```
 
 ### 部署步骤
 
@@ -429,6 +436,91 @@ rm -f application/server/data/blocks/blocks.db
 
 # 或检查是否有残留进程
 lsof application/server/data/blocks/blocks.db
+```
+
+### 🔟 链码安装失败：`write unix @->/run/docker.sock: write: broken pipe`
+
+**现象**：
+```
+Error: chaincode install failed ... docker image build failed: write unix @->/run/docker.sock: write: broken pipe
+```
+
+**根因**：Fabric 2.5.10 使用第三方 Docker 客户端库 `github.com/fsouza/go-dockerclient`，该库与 Docker 29.x 的 API v1.52 不兼容。
+
+**解决方案**：
+```bash
+# 降级 Docker 到 24.0.7（Ubuntu 仓库提供）
+sudo apt-get remove -y docker.io
+sudo apt-get install -y docker.io=24.0.7-0ubuntu4
+
+# 重启 Docker
+sudo systemctl restart docker
+```
+
+### 1️⃣1️⃣ 链码崩溃：`reflect: Call using string as type main.OrderStatus`
+
+**现象**：调用 `UpdateOrderStatus`、`UpdateProductStatus` 等接口时链码容器退出（`Exited (2)`），API 返回 500。
+
+**根因**：`contractapi` 框架的反射机制无法将 `string` 自动转换为自定义类型（`OrderStatus`、`ProductStatus`、`LogisticsStatus`）。
+
+**解决方案**：已修复。如果使用旧版链码，请重新打包安装：
+```bash
+cd chaincode && go build -mod=vendor -o /dev/null .
+# 然后重新打包、安装、批准、提交
+```
+
+### 1️⃣2️⃣ 溯源查询 500：`inspection is required / logistics is required`
+
+**现象**：
+```
+value did not match schema: inspection is required, logistics is required
+```
+
+**根因**：`TraceabilityInfo` 结构体的 `Inspection` 和 `Logistics` 字段使用了 `omitempty`，空值时被省略。`contractapi` 框架的 JSON Schema 验证将其视为必需字段，拒绝响应。
+
+**解决方案**：已修复（移除 `omitempty`）。如使用旧版链码请重新部署。
+
+### 1️⃣3️⃣ 富查询失败：`ExecuteQuery not supported for leveldb`
+
+**现象**：
+```
+Failed to handle GET_QUERY_RESULT. error: ExecuteQuery not supported for leveldb
+```
+
+**根因**：链码中使用 `GetQueryResult()`（CouchDB 富查询），但 Peer 配置为 LevelDB。
+
+**解决方案**：部署时自动使用 CouchDB。如需手动配置：
+```yaml
+# docker-compose-base.yaml
+CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb0.org1.togettoyou.com:5984
+CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
+```
+
+---
+
+## ⚙️ 配置说明
+
+### CouchDB 配置
+
+系统使用 CouchDB 作为状态数据库以支持富查询。每个 Peer 对应一个 CouchDB 实例：
+
+| Peer | CouchDB 地址 | 端口 |
+|------|-------------|------|
+| peer0.org1 | `couchdb0.org1.togettoyou.com` | 5984 |
+| peer1.org1 | `couchdb1.org1.togettoyou.com` | 15984 |
+| peer0.org2 | `couchdb0.org2.togettoyou.com` | 25984 |
+| peer1.org2 | `couchdb1.org2.togettoyou.com` | 35984 |
+| peer0.org3 | `couchdb0.org3.togettoyou.com` | 45984 |
+| peer1.org3 | `couchdb1.org3.togettoyou.com` | 55984 |
+
+### 演示数据
+
+系统内置 `InitLedger` 初始化 2 个农场、2 个产品、1 份检测报告、1 条物流记录和 1 个采购订单。
+部署完成后调用：
+```bash
+docker exec cli.togettoyou.com bash -c "... peer chaincode invoke ... -c '{\"Args\":[\"FarmContract:InitLedger\"]}'"
 ```
 
 ---

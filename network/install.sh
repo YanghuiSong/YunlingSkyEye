@@ -254,6 +254,16 @@ main() {
         exit 2
     fi
 
+    # 预拉取链码构建所需的 Docker 镜像
+    log_info "预拉取链码构建镜像..."
+    docker pull hyperledger/fabric-ccenv:2.5.10 2>&1 | tail -1
+    docker pull hyperledger/fabric-baseos:2.5.10 2>&1 | tail -1
+    docker pull couchdb:3.4 2>&1 | tail -1
+    # 确保镜像标签存在（TWO_DIGIT_VERSION 使用 2.5）
+    docker tag hyperledger/fabric-ccenv:2.5.10 hyperledger/fabric-ccenv:2.5 2>/dev/null || true
+    docker tag hyperledger/fabric-baseos:2.5.10 hyperledger/fabric-baseos:2.5 2>/dev/null || true
+    log_success "链码构建镜像准备完成"
+
     # 清理环境
     show_progress 2 "清理环境" $start_time
     execute_with_timer "清理环境" "./uninstall.sh"
@@ -336,7 +346,9 @@ main() {
 
     wait_for_completion "等待链码初始化（${CHAINCODE_INIT_WAIT}秒）" $CHAINCODE_INIT_WAIT
 
-    if $CLI_CMD "$Org1Peer0Cli peer chaincode query -C $ChannelName -n $ChainCodeName -c '{\"Args\":[\"BlockQueryContract:Hello\"]}'" 2>&1 | grep -E "智行云岭|status:200"; then
+    if $CLI_CMD "$Org1Peer0Cli peer chaincode query -C $ChannelName -n $ChainCodeName -c '{\"Args\":[\"BlockQueryContract:Hello\"]}'" 2>&1 | grep -E "云岭天眼|status:200|payload:"; then
+        # 修复 crypto-config 文件权限（Docker 容器创建的文件属主为 root）
+        sudo chown -R $(whoami):$(whoami) crypto-config 2>/dev/null || true
         log_success "【恭喜您！】network 部署成功 (总耗时: $(time_elapsed $start_time))"
         exit 0
     fi

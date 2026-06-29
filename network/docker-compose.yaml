@@ -39,6 +39,32 @@ services:
       - ./crypto-config/ordererOrganizations/togettoyou.com/orderers/orderer3.togettoyou.com/:/etc/hyperledger/orderer
       - ./data/orderer3.togettoyou.com:/var/hyperledger/production/orderer
 
+  couchdb0.org1.togettoyou.com:
+    container_name: couchdb0.org1.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "5984:5984"
+    volumes:
+      - ./data/couchdb0.org1.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
+
+  couchdb1.org1.togettoyou.com:
+    container_name: couchdb1.org1.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "15984:5984"
+    volumes:
+      - ./data/couchdb1.org1.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
+
   peer0.org1.togettoyou.com:
     extends:
       file: docker-compose-base.yaml
@@ -49,6 +75,9 @@ services:
       - CORE_PEER_LOCALMSPID=Org1MSP
       - CORE_PEER_ADDRESS=peer0.org1.togettoyou.com:7051  # peer节点的访问地址
       - CORE_PEER_CHAINCODEADDRESS=peer0.org1.togettoyou.com:7052 # peer节点的链码访问地址
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb0.org1.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
       # 参考 https://hyperledger-fabric.readthedocs.io/zh-cn/release-2.5/gossip.html
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer1.org1.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org1.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
@@ -59,6 +88,7 @@ services:
       - ./crypto-config/peerOrganizations/org1.togettoyou.com/peers/peer0.org1.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer0.org1.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb0.org1.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com
@@ -72,6 +102,9 @@ services:
       - CORE_PEER_LOCALMSPID=Org1MSP
       - CORE_PEER_ADDRESS=peer1.org1.togettoyou.com:7051  # peer节点的访问地址
       - CORE_PEER_CHAINCODEADDRESS=peer1.org1.togettoyou.com:7052 # peer节点的链码访问地址
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb1.org1.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org1.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer1.org1.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
     ports:
@@ -81,9 +114,36 @@ services:
       - ./crypto-config/peerOrganizations/org1.togettoyou.com/peers/peer1.org1.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer1.org1.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb1.org1.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com
+
+  couchdb0.org2.togettoyou.com:
+    container_name: couchdb0.org2.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "25984:5984"
+    volumes:
+      - ./data/couchdb0.org2.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
+
+  couchdb1.org2.togettoyou.com:
+    container_name: couchdb1.org2.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "35984:5984"
+    volumes:
+      - ./data/couchdb1.org2.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
 
   peer0.org2.togettoyou.com:
     extends:
@@ -95,6 +155,9 @@ services:
       - CORE_PEER_LOCALMSPID=Org2MSP
       - CORE_PEER_ADDRESS=peer0.org2.togettoyou.com:7051  # peer节点的访问地址
       - CORE_PEER_CHAINCODEADDRESS=peer0.org2.togettoyou.com:7052 # peer节点的链码访问地址
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb0.org2.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer1.org2.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org2.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
     ports:
@@ -104,6 +167,7 @@ services:
       - ./crypto-config/peerOrganizations/org2.togettoyou.com/peers/peer0.org2.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer0.org2.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb0.org2.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com
@@ -119,6 +183,9 @@ services:
       - CORE_PEER_CHAINCODEADDRESS=peer1.org2.togettoyou.com:7052 # peer节点的链码访问地址
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org2.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer1.org2.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb1.org2.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     ports:
       - "37051:7051"
       - "37053:7053"
@@ -126,9 +193,36 @@ services:
       - ./crypto-config/peerOrganizations/org2.togettoyou.com/peers/peer1.org2.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer1.org2.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb1.org2.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com
+
+  couchdb0.org3.togettoyou.com:
+    container_name: couchdb0.org3.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "45984:5984"
+    volumes:
+      - ./data/couchdb0.org3.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
+
+  couchdb1.org3.togettoyou.com:
+    container_name: couchdb1.org3.togettoyou.com
+    image: couchdb:3.4
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "55984:5984"
+    volumes:
+      - ./data/couchdb1.org3.togettoyou.com:/opt/couchdb/data
+    networks:
+      - fabric_togettoyou_network
 
   peer0.org3.togettoyou.com:
     extends:
@@ -140,6 +234,9 @@ services:
       - CORE_PEER_LOCALMSPID=Org3MSP
       - CORE_PEER_ADDRESS=peer0.org3.togettoyou.com:7051  # peer节点的访问地址
       - CORE_PEER_CHAINCODEADDRESS=peer0.org3.togettoyou.com:7052 # peer节点的链码访问地址
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb0.org3.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer1.org3.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org3.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
     ports:
@@ -149,6 +246,7 @@ services:
       - ./crypto-config/peerOrganizations/org3.togettoyou.com/peers/peer0.org3.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer0.org3.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb0.org3.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com
@@ -165,6 +263,9 @@ services:
       - CORE_PEER_CHAINCODEADDRESS=peer1.org3.togettoyou.com:7052 # peer节点的链码访问地址
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org3.togettoyou.com:7051 # Gossip引导节点，联络列表中的其他 peer 节点进行消息的 gossip 传播
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer1.org3.togettoyou.com:7051 # 节点向组织外节点公开的服务地址（通过锚节点广播出去给其它组织节点）
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb1.org3.togettoyou.com:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     ports:
       - "57051:7051"
       - "57053:7053"
@@ -172,6 +273,7 @@ services:
       - ./crypto-config/peerOrganizations/org3.togettoyou.com/peers/peer1.org3.togettoyou.com:/etc/hyperledger/peer
       - ./data/peer1.org3.togettoyou.com:/var/hyperledger/production
     depends_on:
+      - couchdb1.org3.togettoyou.com
       - orderer1.togettoyou.com
       - orderer2.togettoyou.com
       - orderer3.togettoyou.com

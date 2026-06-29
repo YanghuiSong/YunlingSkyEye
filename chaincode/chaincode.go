@@ -190,8 +190,8 @@ type QueryResult struct {
 type TraceabilityInfo struct {
 	Product    Product            `json:"product"`
 	Farm       Farm               `json:"farm"`
-	Inspection *InspectionReport  `json:"inspection,omitempty"`
-	Logistics  []LogisticsRecord  `json:"logistics,omitempty"`
+	Inspection *InspectionReport  `json:"inspection"`
+	Logistics  []LogisticsRecord  `json:"logistics"`
 }
 
 // =================== 基础合约（通用方法） ===================
@@ -279,7 +279,110 @@ type FarmContract struct {
 
 // InitLedger 初始化账本（合约部署时调用）
 func (c *FarmContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
-	log.Println("云岭天眼溯源链码 InitLedger")
+	log.Println("云岭天眼溯源链码 InitLedger - 初始化演示数据")
+
+	now, _ := time.Parse(time.RFC3339, "2026-06-29T20:00:00+08:00")
+
+	// ========== 1. 注册农场 ==========
+	farm := Farm{
+		ID: "FARM001", Name: "高原生态苹果基地",
+		Province: "云南省", City: "丽江市", District: "玉龙县",
+		Address: "拉市镇吉余村", Area: 1000,
+		OwnerName: "张建国", OwnerPhone: "13988880001",
+		CertLevel: "有机", Status: FARM_ACTIVE,
+		CreateTime: now, UpdateTime: now,
+	}
+	key, _ := c.getCompositeKey(ctx, PREFIX_FARM, []string{string(FARM_ACTIVE), farm.ID})
+	if err := c.putState(ctx, key, farm); err != nil {
+		return fmt.Errorf("创建演示农场失败: %v", err)
+	}
+
+	farm2 := Farm{
+		ID: "FARM002", Name: "斗南鲜切花基地",
+		Province: "云南省", City: "昆明市", District: "呈贡区",
+		Address: "斗南街道", Area: 5000,
+		OwnerName: "李华", OwnerPhone: "13988880002",
+		CertLevel: "地理标志", Status: FARM_ACTIVE,
+		CreateTime: now, UpdateTime: now,
+	}
+	key2, _ := c.getCompositeKey(ctx, PREFIX_FARM, []string{string(FARM_ACTIVE), farm2.ID})
+	if err := c.putState(ctx, key2, farm2); err != nil {
+		return fmt.Errorf("创建演示农场2失败: %v", err)
+	}
+
+	// ========== 2. 注册产品 ==========
+	product1 := Product{
+		ID: "PROD001", Name: "高原有机红富士苹果",
+		Category: "水果", FarmID: "FARM001", FarmName: "高原生态苹果基地",
+		BatchNo: "BATCH20260601", Quantity: 5000, Unit: "斤",
+		PlantingDate: now.AddDate(0, -3, 0), HarvestDate: now,
+		Status: PROD_HARVESTED, Description: "产自丽江玉龙雪山脚下，海拔2600米高原有机种植",
+		CreateTime: now, UpdateTime: now,
+	}
+	k, _ := c.getCompositeKey(ctx, PREFIX_PRODUCT, []string{string(product1.Status), product1.ID})
+	c.putState(ctx, k, product1)
+
+	product2 := Product{
+		ID: "PROD002", Name: "昆明绣球花",
+		Category: "花卉", FarmID: "FARM002", FarmName: "斗南鲜切花基地",
+		BatchNo: "BATCH20260602", Quantity: 2000, Unit: "箱",
+		PlantingDate: now.AddDate(0, -2, 0), HarvestDate: now,
+		Status: PROD_CERTIFIED, Description: "优质鲜切花，出口级品质",
+		CreateTime: now, UpdateTime: now,
+	}
+	k, _ = c.getCompositeKey(ctx, PREFIX_PRODUCT, []string{string(product2.Status), product2.ID})
+	c.putState(ctx, k, product2)
+
+	// ========== 3. 创建检测报告（Org2） ==========
+	inspection := InspectionReport{
+		ID: "INSP001", ProductID: "PROD002", ProductName: "昆明绣球花",
+		Inspector: "王检测", InspectorOrg: "云南省质量检测中心",
+		InspectionDate: now, Result: INSP_PASS,
+		Grade: "特级", CertNumber: "YN2026CERT0001",
+		PesticideResidue: "未检出", HeavyMetal: "低于国标限值",
+		Microorganism: "合格", Conclusion: "经检测，产品符合有机认证标准",
+		InspectorID: "INSPECTOR001",
+		CreateTime: now, UpdateTime: now,
+	}
+	key, _ = c.getCompositeKey(ctx, PREFIX_INSPECTION, []string{string(inspection.Result), inspection.ID})
+	c.putState(ctx, key, inspection)
+
+	// ========== 4. 创建物流记录（Org3） ==========
+	logistics := LogisticsRecord{
+		ID: "LOG001", ProductID: "PROD002", ProductName: "昆明绣球花",
+		Quantity: 500, Transporter: "顺丰冷链",
+		FromProvince: "云南省", FromCity: "昆明市",
+		ToProvince: "上海市", ToCity: "浦东新区",
+		TransportMode: "冷链", Temperature: "2-8℃",
+		StartTime: now, EndTime: now.AddDate(0, 0, 2),
+		Status: LOG_PREPARING,
+		CreateTime: now, UpdateTime: now,
+	}
+	key, _ = c.getCompositeKey(ctx, PREFIX_LOGISTICS, []string{string(logistics.Status), logistics.ID})
+	c.putState(ctx, key, logistics)
+
+	// ========== 5. 创建溯源链接 ==========
+	traceKey, _ := c.getCompositeKey(ctx, PREFIX_TRACE_LINK, []string{product2.ID})
+	traceData := map[string]interface{}{
+		"productId":   product2.ID,
+		"logisticsId": logistics.ID,
+		"timestamp":   now,
+	}
+	c.putState(ctx, traceKey, traceData)
+
+	// ========== 6. 创建采购订单（Org3） ==========
+	order := PurchaseOrder{
+		ID: "ORDER001", ProductID: "PROD002", ProductName: "昆明绣球花",
+		Quantity: 500, TotalPrice: 60000,
+		BuyerName: "上海花卉贸易有限公司", BuyerOrg: "上海花卉",
+		SellerName: "斗南鲜切花基地", SellerOrg: "斗南花卉",
+		Status: ORDER_PENDING,
+		CreateTime: now, UpdateTime: now,
+	}
+	key, _ = c.getCompositeKey(ctx, PREFIX_PURCHASE_ORDER, []string{string(ORDER_PENDING), order.ID})
+	c.putState(ctx, key, order)
+
+	log.Println("演示数据初始化完成")
 	return nil
 }
 
@@ -497,7 +600,8 @@ func (c *ProductContract) RegisterProduct(ctx contractapi.TransactionContextInte
 }
 
 // UpdateProductStatus 更新产品状态（产品生命周期管理）
-func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContextInterface, id string, newStatus ProductStatus, updateTime time.Time) error {
+func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContextInterface, id string, newStatus string, updateTime time.Time) error {
+	status := ProductStatus(newStatus)
 	mspID, err := c.getClientMSPID(ctx)
 	if err != nil {
 		return err
@@ -533,7 +637,7 @@ func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContext
 	}
 
 	oldKey, _ := c.getCompositeKey(ctx, PREFIX_PRODUCT, []string{string(product.Status), id})
-	newKey, err := c.getCompositeKey(ctx, PREFIX_PRODUCT, []string{string(newStatus), id})
+	newKey, err := c.getCompositeKey(ctx, PREFIX_PRODUCT, []string{string(status), id})
 	if err != nil {
 		return err
 	}
@@ -542,9 +646,9 @@ func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContext
 		return fmt.Errorf("删除旧状态失败: %v", err)
 	}
 
-	product.Status = newStatus
+	product.Status = status
 	product.UpdateTime = updateTime
-	if newStatus == PROD_HARVESTED {
+	if status == PROD_HARVESTED {
 		product.HarvestDate = updateTime
 	}
 
@@ -553,7 +657,7 @@ func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContext
 
 // RecordHarvest 记录采收
 func (c *ProductContract) RecordHarvest(ctx contractapi.TransactionContextInterface, id string, harvestDate time.Time) error {
-	return c.UpdateProductStatus(ctx, id, PROD_HARVESTED, harvestDate)
+	return c.UpdateProductStatus(ctx, id, string(PROD_HARVESTED), harvestDate)
 }
 
 // QueryProduct 查询产品信息
@@ -680,7 +784,7 @@ func (c *InspectionContract) CreateInspection(ctx contractapi.TransactionContext
 	}
 
 	if product.Status == PROD_INSPECTING || product.Status == PROD_HARVESTED || product.Status == PROD_PLANTED {
-		prodContract.UpdateProductStatus(ctx, productId, PROD_CERTIFIED, updateTime)
+		prodContract.UpdateProductStatus(ctx, productId, string(PROD_CERTIFIED), updateTime)
 	}
 
 	if certNumber != "" {
@@ -839,14 +943,15 @@ func (c *LogisticsContract) CreateLogisticsRecord(ctx contractapi.TransactionCon
 	}
 
 	if product.Status == PROD_CERTIFIED || product.Status == PROD_HARVESTED {
-		prodContract.UpdateProductStatus(ctx, productId, PROD_SHIPPING, createTime)
+		prodContract.UpdateProductStatus(ctx, productId, string(PROD_SHIPPING), createTime)
 	}
 
 	return nil
 }
 
 // UpdateLogisticsStatus 更新物流状态
-func (c *LogisticsContract) UpdateLogisticsStatus(ctx contractapi.TransactionContextInterface, id string, newStatus LogisticsStatus, updateTime time.Time) error {
+func (c *LogisticsContract) UpdateLogisticsStatus(ctx contractapi.TransactionContextInterface, id string, newStatus string, updateTime time.Time) error {
+	status := LogisticsStatus(newStatus)
 	mspID, err := c.getClientMSPID(ctx)
 	if err != nil {
 		return err
@@ -879,7 +984,7 @@ func (c *LogisticsContract) UpdateLogisticsStatus(ctx contractapi.TransactionCon
 	}
 
 	oldKey, _ := c.getCompositeKey(ctx, PREFIX_LOGISTICS, []string{string(record.Status), id})
-	newKey, err := c.getCompositeKey(ctx, PREFIX_LOGISTICS, []string{string(newStatus), id})
+	newKey, err := c.getCompositeKey(ctx, PREFIX_LOGISTICS, []string{string(status), id})
 	if err != nil {
 		return err
 	}
@@ -888,9 +993,9 @@ func (c *LogisticsContract) UpdateLogisticsStatus(ctx contractapi.TransactionCon
 		return fmt.Errorf("删除旧状态失败: %v", err)
 	}
 
-	record.Status = newStatus
+	record.Status = status
 	record.UpdateTime = updateTime
-	if newStatus == LOG_IN_TRANSIT {
+	if status == LOG_IN_TRANSIT {
 		traceKey, err := c.getCompositeKey(ctx, PREFIX_TRACE_LINK, []string{record.ProductID})
 		if err != nil {
 			return err
@@ -902,10 +1007,10 @@ func (c *LogisticsContract) UpdateLogisticsStatus(ctx contractapi.TransactionCon
 		}
 		c.putState(ctx, traceKey, traceData)
 	}
-	if newStatus == LOG_DELIVERED {
+	if status == LOG_DELIVERED {
 		record.EndTime = updateTime
 		prodContract := &ProductContract{BaseContract: c.BaseContract}
-		prodContract.UpdateProductStatus(ctx, record.ProductID, PROD_SOLD, updateTime)
+		prodContract.UpdateProductStatus(ctx, record.ProductID, string(PROD_SOLD), updateTime)
 	}
 
 	return c.putState(ctx, newKey, record)
@@ -1015,8 +1120,10 @@ func (c *TraceContract) GetFullTraceability(ctx contractapi.TransactionContextIn
 	}
 
 	return &TraceabilityInfo{
-		Product: *product,
-		Farm:    *farm,
+		Product:    *product,
+		Farm:       *farm,
+		Inspection: nil,
+		Logistics:  []LogisticsRecord{},
 	}, nil
 }
 
@@ -1098,7 +1205,8 @@ func (c *TradeContract) CreatePurchaseOrder(ctx contractapi.TransactionContextIn
 }
 
 // UpdateOrderStatus 更新订单状态
-func (c *TradeContract) UpdateOrderStatus(ctx contractapi.TransactionContextInterface, id string, newStatus OrderStatus, updateTime time.Time) error {
+func (c *TradeContract) UpdateOrderStatus(ctx contractapi.TransactionContextInterface, id string, newStatus string, updateTime time.Time) error {
+	status := OrderStatus(newStatus)
 	mspID, err := c.getClientMSPID(ctx)
 	if err != nil {
 		return err
@@ -1131,19 +1239,19 @@ func (c *TradeContract) UpdateOrderStatus(ctx contractapi.TransactionContextInte
 	}
 
 	oldKey, _ := c.getCompositeKey(ctx, PREFIX_PURCHASE_ORDER, []string{string(order.Status), id})
-	newKey, err := c.getCompositeKey(ctx, PREFIX_PURCHASE_ORDER, []string{string(newStatus), id})
+	newKey, err := c.getCompositeKey(ctx, PREFIX_PURCHASE_ORDER, []string{string(status), id})
 	if err != nil {
 		return err
 	}
 	if err := ctx.GetStub().DelState(oldKey); err != nil {
 		return fmt.Errorf("删除旧状态失败: %v", err)
 	}
-	order.Status = newStatus
+	order.Status = status
 	order.UpdateTime = updateTime
 
-	if newStatus == ORDER_CONFIRMED {
+	if status == ORDER_CONFIRMED {
 		prodContract := &ProductContract{BaseContract: c.BaseContract}
-		prodContract.UpdateProductStatus(ctx, order.ProductID, PROD_SOLD, updateTime)
+		prodContract.UpdateProductStatus(ctx, order.ProductID, string(PROD_SOLD), updateTime)
 	}
 
 	return c.putState(ctx, newKey, order)

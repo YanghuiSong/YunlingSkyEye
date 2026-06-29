@@ -1,2 +1,13 @@
 .vscode
 .idea
+*.tar.gz
+Dockerfile.chaincode
+network/config/
+network/crypto-config/
+network/data/
+application/server/data/
+application/server/server
+application/web/node_modules/
+application/web/dist/
+application/web/.vite/
+chaincode/chaincode
