@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SupplyChainHandler 供应链平台 API 处理器
+// 文件名 bank 因历史原因命名，实际内容为供应链平台（Org3MSP）接口
 type SupplyChainHandler struct {
 	svc *service.SupplyChainService
 }

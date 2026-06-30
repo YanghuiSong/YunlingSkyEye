@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// InspectionHandler 检测认证中心 API 处理器
+// 文件名 trading_platform 因历史原因命名，实际内容为检测认证中心（Org2MSP）接口
 type InspectionHandler struct {
 	svc *service.InspectionService
 }

@@ -8,6 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// AgricultureHandler 农业局 API 处理器
+// 文件名 realty_agency 因历史原因命名，实际内容为农业局（Org1MSP）接口
+// 提供：农场管理、产品管理、溯源查询、区块查询四大类接口
 type AgricultureHandler struct {
 	svc *service.AgricultureService
 }

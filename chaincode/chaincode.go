@@ -209,6 +209,11 @@ func (c *BaseContract) getClientMSPID(ctx contractapi.TransactionContextInterfac
 	return clientID.GetMSPID()
 }
 
+// getCompositeKey 创建 Fabric 复合键
+// Fabric 使用复合键实现数据的多级索引，格式为：\x00{prefix}\x00{attr1}\x00{attr2}...
+// 例如农场数据的复合键：\x00FARM\x00ACTIVE\x00FARM001
+// 前缀 PREFIX_FARM 用于区分数据类型，ACTIVE 是状态，FARM001 是 ID
+// 复合键的优势：支持按前缀进行范围查询和分页
 func (c *BaseContract) getCompositeKey(ctx contractapi.TransactionContextInterface, objectType string, attributes []string) (string, error) {
 	key, err := ctx.GetStub().CreateCompositeKey(objectType, attributes)
 	if err != nil {
@@ -217,7 +222,7 @@ func (c *BaseContract) getCompositeKey(ctx contractapi.TransactionContextInterfa
 	return key, nil
 }
 
-func (c *BaseContract) getState(ctx contractapi.TransactionContextInterface, key string, value interface{}) error {
+// getState 从账本世界状态中读取并反序列化数据\n// GetState 是 Fabric 提供的核心 API，通过键直接读取世界状态\n// 返回值：如果键不存在则返回错误，存在则 JSON 反序列化到 value 指针\n// 与 getQueryResult 的区别：getState 通过键精确查找，getQueryResult 通过 CouchDB 富查询\nfunc (c *BaseContract) getState(ctx contractapi.TransactionContextInterface, key string, value interface{}) error {
 	bytes, err := ctx.GetStub().GetState(key)
 	if err != nil {
 		return fmt.Errorf("读取状态失败: %v", err)
@@ -228,6 +233,10 @@ func (c *BaseContract) getState(ctx contractapi.TransactionContextInterface, key
 	return json.Unmarshal(bytes, value)
 }
 
+// putState 将数据序列化后写入账本世界状态
+// 这是链码中所有写操作的核心方法
+// 流程：JSON 序列化 → PutState（写入）→ 交易提交后永久记录在区块链上
+// PutState 是 Fabric 提供的核心 API，写入的数据会进入区块并分发到所有 Peer
 func (c *BaseContract) putState(ctx contractapi.TransactionContextInterface, key string, value interface{}) error {
 	bytes, err := json.Marshal(value)
 	if err != nil {
@@ -236,11 +245,16 @@ func (c *BaseContract) putState(ctx contractapi.TransactionContextInterface, key
 	return ctx.GetStub().PutState(key, bytes)
 }
 
+// getStateWithPrefix 按复合键前缀分页查询
+// 使用 Fabric 的 GetStateByPartialCompositeKeyWithPagination API
+// 通过指定前缀（如 "FARM"）和部分属性（如 ["ACTIVE"]）进行范围查询
+// 返回迭代器，用于遍历所有匹配复合键前缀的数据
+// 分页参数：pageSize 每页条数，bookmark 游标位置（首次为空字符串）
 func (c *BaseContract) getStateWithPrefix(ctx contractapi.TransactionContextInterface, prefix string, attributes []string, pageSize int32, bookmark string) (shim.StateQueryIteratorInterface, *peer.QueryResponseMetadata, error) {
 	return ctx.GetStub().GetStateByPartialCompositeKeyWithPagination(prefix, attributes, pageSize, bookmark)
 }
 
-func (c *BaseContract) paginateQuery(ctx contractapi.TransactionContextInterface, prefix string, attributes []string, pageSize int32, bookmark string) (*QueryResult, error) {
+// paginateQuery 通用分页查询方法\n// 利用 Fabric 的复合键前缀分页功能\n// 返回值 QueryResult 包含：\n//   - Records: 查询结果列表（interface{} 类型，由调用方断言为具体类型）\n//   - Bookmark: 下一页的游标（空字符串表示无更多数据）\n//   - FetchedCount: 本次返回的记录数\n// 实现原理：通过 getStateWithPrefix 获取迭代器，遍历 pageSize 条记录并反序列化\nfunc (c *BaseContract) paginateQuery(ctx contractapi.TransactionContextInterface, prefix string, attributes []string, pageSize int32, bookmark string) (*QueryResult, error) {
 	iterator, metadata, err := c.getStateWithPrefix(ctx, prefix, attributes, pageSize, bookmark)
 	if err != nil {
 		return nil, fmt.Errorf("分页查询失败: %v", err)
@@ -387,6 +401,13 @@ func (c *FarmContract) InitLedger(ctx contractapi.TransactionContextInterface) e
 }
 
 // RegisterFarm 注册农场（仅农业局可调用）
+// 权限校验：调用者必须是 Org1MSP（农业局）
+// 数据存储：使用复合键 PREFIX_FARM + ACTIVE + farmID
+//           例如：\x00FARM\x00ACTIVE\x00FARM001
+// 流程：1. 验证调用者 MSPID == Org1MSP
+//       2. 检查农场ID是否已存在
+//       3. 创建 Farm 结构体并存入状态数据库
+// 参数：id/name/province/city/district/address/area/ownerName/ownerPhone/certLevel/createTime
 func (c *FarmContract) RegisterFarm(ctx contractapi.TransactionContextInterface,
 	id, name, province, city, district, address string, area float64,
 	ownerName, ownerPhone, certLevel string, createTime time.Time) error {
@@ -599,7 +620,18 @@ func (c *ProductContract) RegisterProduct(ctx contractapi.TransactionContextInte
 	return c.putState(ctx, key, product)
 }
 
-// UpdateProductStatus 更新产品状态（产品生命周期管理）
+// UpdateProductStatus 更新产品状态（产品生命周期状态机）
+// 产品有完整的生命周期状态机：
+//   PLANTED（已种植）→ HARVESTED（已采收）→ INSPECTING（检测中）→ CERTIFIED（已认证）
+//   → SHIPPING（运输中）→ SOLD（已售出）
+//   → RECALLED（已召回，任意状态可进入）
+// 状态迁移实现原理：
+//   1. 遍历所有状态枚举，通过复合键前缀查找产品当前所在的旧状态
+//      （复合键格式：\x00PROD\x00{status}\x00{id}）
+//   2. 从旧状态键删除记录（DelState）
+//   3. 用新状态键重新写入（putState）
+// 这种"删除旧键→写入新键"的方式模拟了状态机的状态迁移，
+// 保证同一时刻产品只处于一种状态
 func (c *ProductContract) UpdateProductStatus(ctx contractapi.TransactionContextInterface, id string, newStatus string, updateTime time.Time) error {
 	status := ProductStatus(newStatus)
 	mspID, err := c.getClientMSPID(ctx)
@@ -1080,7 +1112,16 @@ type TraceContract struct {
 	BaseContract
 }
 
-// GetFullTraceability 获取完整溯源信息（从产地到销售全链路）
+// GetFullTraceability 获取完整溯源信息（跨合约聚合查询）
+// 这是系统的核心功能——从产地到销售的全链路溯源
+// 实现原理：在一个交易中依次调用多个子合约的方法：
+//   1. ProductContract.QueryProduct —— 查询产品基本信息
+//   2. FarmContract.QueryFarm —— 查询产地信息
+//   3. CouchDB 富查询 —— 按 productId 和 result="PASS" 查询检测报告
+//   4. LogisticsContract.QueryLogisticsByProduct —— 查询物流记录
+// 这种设计体现了 Fabric 多合约协同的能力。
+// 注意：因为 CouchDB 富查询需要遍历所有产品相关文档，
+// 所以需要 CouchDB 作为状态数据库（不支持 LevelDB）
 func (c *TraceContract) GetFullTraceability(ctx contractapi.TransactionContextInterface, productId string) (*TraceabilityInfo, error) {
 	prodContract := &ProductContract{BaseContract: c.BaseContract}
 	product, err := prodContract.QueryProduct(ctx, productId)
